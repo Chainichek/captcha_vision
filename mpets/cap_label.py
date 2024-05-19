@@ -3,6 +3,7 @@ import random
 from concurrent.futures import ThreadPoolExecutor
 from threading import Thread
 
+from python_rucaptcha.core.enums import ServiceEnm
 from python_rucaptcha.image_captcha import ImageCaptcha
 
 API_KEY = "be495762071b761797447785ccf4b3d1"
@@ -11,6 +12,7 @@ API_KEY = "be495762071b761797447785ccf4b3d1"
 def start(file):
     print("Processing", file)
     result = ImageCaptcha(rucaptcha_key=API_KEY,
+                          service_type=ServiceEnm.RUCAPTCHA.value,
                           ).captcha_handler(captcha_file=f"./cap/{file}")
     ERROR = f"ERROR_{random.randint(10000, 90000)}"
 
