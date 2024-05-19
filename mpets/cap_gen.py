@@ -8,6 +8,6 @@ def get_cap(i):
     Path(f"./cap/{i}.jpg").write_bytes(requests.get(url).content)
 
 
-for i in range(10):
+for i in range(50):
     print(i)
     get_cap(i)

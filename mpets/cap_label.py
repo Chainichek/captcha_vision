@@ -39,7 +39,7 @@ def start(file):
 
 
 def main():
-    with ThreadPoolExecutor(max_workers=3) as executor:
+    with ThreadPoolExecutor(max_workers=10) as executor:
         for dirpath, dirnames, filenames in os.walk('./cap'):
             for file in filenames:
                 # Submit the task to the thread pool
