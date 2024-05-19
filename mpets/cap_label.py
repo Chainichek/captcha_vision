@@ -1,5 +1,6 @@
 import os
 import random
+from concurrent.futures import ThreadPoolExecutor
 from threading import Thread
 
 from python_rucaptcha.image_captcha import ImageCaptcha
@@ -22,8 +23,12 @@ def start(file):
 
 
 def main():
-    for dir in os.walk('./cap'):
-        for file in dir[2]:
-            # add threading here
-            Thread(target=start, args=(file,)).start()
+    with ThreadPoolExecutor(max_workers=5) as executor:
+        for dirpath, dirnames, filenames in os.walk('./cap'):
+            for file in filenames:
+                # Submit the task to the thread pool
+                executor.submit(start, file)
 
+
+if __name__ == '__main__':
+    main()
