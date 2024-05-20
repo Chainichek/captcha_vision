@@ -20,26 +20,20 @@ def start(file):
 
     if len(cap_text) != 6\
             or not cap_text.isdigit():
-        print("sleeping 5s")
-        time.sleep(5)
-        print("initial resp", result.get('taskId'))
         resp = Control(rucaptcha_key=API_KEY).reportIncorrect(id=result.get('taskId'))
-        print("Incorrect captcha", cap_text, resp)
+        print("Incorrect captcha", result.get('taskId'))
         os.remove(f"./cap/{file}")
         return
 
-    ERROR = f"ERROR_{random.randint(10000, 90000)}"
-
     # save result to file
-    with open(f"./samples/{result.get('solution', {}).get('text', ERROR)}.png", 'wb') as f:
+    with open(f"./samples/{result.get('solution', {}).get('text')}.png", 'wb') as f:
         temp = open(f"./cap/{file}", 'rb')
         f.write(temp.read())
-    print(result)
     os.remove(f"./cap/{file}")
 
 
 def main():
-    with ThreadPoolExecutor(max_workers=10) as executor:
+    with ThreadPoolExecutor(max_workers=5) as executor:
         for dirpath, dirnames, filenames in os.walk('./cap'):
             for file in filenames:
                 # Submit the task to the thread pool

@@ -32,7 +32,7 @@ model = tf.keras.models.load_model(model_path, custom_objects={'CTCLayer': CTCLa
 model.summary()
 
 # Загрузка изображения
-image_path = "./mpets/cap/865253.jpg"  # Замените на путь к вашему изображению
+image_path = "mpets/samples/865253.jpg"  # Замените на путь к вашему изображению
 image = Image.open(image_path)
 
 # Предобработка изображения
