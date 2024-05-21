@@ -1,88 +1,139 @@
+import asyncio
+import os
+
 import numpy as np
+import requests
 import tensorflow as tf
 from PIL import Image
-from tensorflow.keras import layers, models
+from python_rucaptcha.core.enums import ServiceEnm
+from python_rucaptcha.image_captcha import ImageCaptcha
 
-# Определение пользовательского слоя с поддержкой дополнительных аргументов
-class CTCLayer(layers.Layer):
-    def __init__(self, **kwargs):
-        super().__init__(**kwargs)
-        self.loss_fn = tf.keras.backend.ctc_batch_cost
+from learning import mpets
+from utils.CTCLayer import CTCLayer
+from tensorflow.keras import layers
 
-    def call(self, y_true, y_pred):
-        batch_length = tf.cast(tf.shape(y_true)[0], dtype="int64")
-        input_length = tf.cast(tf.shape(y_pred)[1], dtype="int64")
-        label_length = tf.cast(tf.shape(y_true)[1], dtype="int64")
-
-        input_length = input_length * tf.ones(shape=(batch_length, 1), dtype="int64")
-        label_length = label_length * tf.ones(shape=(batch_length, 1), dtype="int64")
-
-        loss = self.loss_fn(y_true, y_pred, input_length, label_length)
-        self.add_loss(loss)
-
-        return y_pred
-
-# Загрузка модели с указанием пользовательского слоя
-model_path = "captcha_mpets.keras"
-model = tf.keras.models.load_model(model_path, custom_objects={'CTCLayer': CTCLayer})
-
-# Проверка структуры модели
+# Путь до модели
+MODEL_PATH = "captcha_mpets.keras"
+model = tf.keras.models.load_model(MODEL_PATH, custom_objects={'CTCLayer': CTCLayer})
 model.summary()
 
-# Загрузка изображения
-# image_path = "mpets/cap/7.jpg"
-image_path = "mp/samples/111121.png"
-image = Image.open(image_path)
 
-# Предобработка изображения
-# image = image.convert('L')  # Преобразование в оттенки серого
-# image = image.resize((200, 50))  # Изменение размера изображения
+async def recognize_captcha(image_path: str) -> str:
+    image = Image.open(image_path)
+    image_array = np.array(image)
+    image_array = image_array / 255.0  # Нормализуем значения пикселей до диапазона [0, 1]
 
-image_array = np.array(image)
+    # Добавляем ось каналов для совместимости с TensorFlow (для черно-белого изображения)
+    image_array = np.expand_dims(image_array, axis=-1)
 
-# Нормализуем значения пикселей до диапазона [0, 1]
-image_array = image_array / 255.0
+    # Преобразуем массив numpy в тензор TensorFlow
+    image_tensor = tf.convert_to_tensor(image_array, dtype=tf.float32)
 
-# Добавляем ось каналов для совместимости с TensorFlow (для черно-белого изображения)
-image_array = np.expand_dims(image_array, axis=-1)
+    # Транспонируем тензор изображения
+    image_tensor = tf.transpose(image_tensor, perm=[1, 0, 2, 3])
 
-# Преобразуем массив numpy в тензор TensorFlow
-image_tensor = tf.convert_to_tensor(image_array, dtype=tf.float32)
+    # Добавляем батч размер для соответствия форме входных данных модели
+    image_tensor = tf.expand_dims(image_tensor, axis=0)
 
-# Транспонируем тензор изображения
-image_tensor = tf.transpose(image_tensor, perm=[1, 0, 2, 3])
+    # Метки (заглушка, т.к. мы предсказываем)
+    label_array = np.zeros((1, 6))
 
-# Добавляем батч размер для соответствия форме входных данных модели
-image_tensor = tf.expand_dims(image_tensor, axis=0)
+    char_to_num = layers.StringLookup(
+        vocabulary=list({'1', '2', '3', '4', '5', '6', '7', '8', '9', '0'}),
+        num_oov_indices=0,
+        mask_token=None
+    )
 
-# Метки (заглушка, т.к. мы предсказываем)
-label_array = np.zeros((1, 6))  # Предположим, что длина метки равна 6
+    num_to_char = layers.StringLookup(
+        vocabulary=char_to_num.get_vocabulary(),
+        mask_token=None,
+        invert=True
+    )
+
+    # Передача изображения в модель для предсказания
+    predictions = model.predict([image_tensor, label_array])
+    # Получение результата
+
+    sequence_length = [37]
+    # Декодирование предсказаний
+    decoded_result, _ = tf.keras.backend.ctc_decode(predictions, input_length=sequence_length)
+
+    pred_texts = []
+    for result in decoded_result:
+        res = tf.strings.reduce_join(num_to_char(result[:, :6] + 1)).numpy().decode("utf-8")
+        pred_texts.append(res)
+
+    # Возвращает строчку с кодом: "123456"
+    return ''.join(pred_texts)
 
 
-char_to_num = layers.StringLookup(
-    vocabulary = list({'1', '2', '3', '4', '5', '6', '7', '8', '9', '0'}),
-    num_oov_indices = 0,
-    mask_token = None
-)
-
-num_to_char = layers.StringLookup(
-    vocabulary = char_to_num.get_vocabulary(),
-    mask_token = None,
-    invert = True
-)
-
-# Передача изображения в модель для предсказания
-predictions = model.predict([image_tensor, label_array])
-# Получение результата
+API_KEY = "be495762071b761797447785ccf4b3d1"
 
 
-sequence_length = [37]
-# Декодирование предсказаний
-decoded_result, _ = tf.keras.backend.ctc_decode(predictions, input_length=sequence_length)
+async def incorrect_captcha(task_id: str):
+    params = {"key": API_KEY,
+              "action": "reportbad",
+              "id": task_id,
+              "json": 1,
+              "header_acao": "1"}
+    resp = requests.post(
+        f"https://rucaptcha.com/res.php", params=params)
+    return resp
 
-pred_texts = []
-for result in decoded_result:
-    res = tf.strings.reduce_join(num_to_char(result[:, :6] + 1)).numpy().decode("utf-8")
-    pred_texts.append(res)
 
-print(pred_texts)
+async def rucaptcha(file):
+    result = await ImageCaptcha(rucaptcha_key=API_KEY,
+                                service_type=ServiceEnm.RUCAPTCHA.value,
+                                numeric=1,
+                                minLength=6,
+                                maxLength=6
+                                ).aio_captcha_handler(captcha_file=f"{file}")
+    print(result)
+    cap_text: str = result.get("solution").get('text')
+
+    if len(cap_text) != 6 \
+            or not cap_text.isdigit():
+        task_id = result.get('taskId')
+        await incorrect_captcha(task_id=task_id)
+        return None, None
+    return cap_text, result.get('taskId')
+
+
+total = 0
+correct = 0
+
+
+async def main():
+    global total, correct
+    for i in range(100):
+        total += 1
+        result = await mpets.get_captcha()
+        # image_path = result["captcha"]
+        image_path = "./samples/100529.png"
+        code = await recognize_captcha(image_path)  # С помощью нейронки
+
+        captcha_result = await mpets.is_correct_captcha(result["cookie"], code)
+        print(f"Распознанный код: {code} | Результат: {captcha_result}")
+
+        if captcha_result:
+            correct += 1
+            with open(f"./new/{code}.png", 'wb') as f:
+                temp = open(f"{image_path}", 'rb')
+                f.write(temp.read())
+
+        # os.remove(image_path)
+        print(f"Точность: {correct}/{total} = {correct / total}")
+
+        await asyncio.sleep(1)
+
+
+async def start():
+    tasks = []
+    for i in range(1):
+        tasks.append(asyncio.create_task(main()))
+
+    await asyncio.gather(*tasks)
+
+
+if __name__ == "__main__":
+    asyncio.run(start())
