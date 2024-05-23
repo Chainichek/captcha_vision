@@ -13,7 +13,7 @@ from utils.CTCLayer import CTCLayer
 from tensorflow.keras import layers
 
 # Путь до модели
-MODEL_PATH = "cap1.keras"
+MODEL_PATH = "../captcha_mpets.keras"
 model = tf.keras.models.load_model(MODEL_PATH, custom_objects={'CTCLayer': CTCLayer})
 model.summary()
 
@@ -83,12 +83,14 @@ async def incorrect_captcha(task_id: str):
 
 async def rucaptcha(file):
     result = await ImageCaptcha(rucaptcha_key=API_KEY,
-                          service_type=ServiceEnm.RUCAPTCHA.value,
-                          numeric=1,
-                          minLength=6,
-                          maxLength=6
-                          ).aio_captcha_handler(captcha_file=f"{file}")
+                                service_type=ServiceEnm.RUCAPTCHA.value,
+                                numeric=1,
+                                minLength=6,
+                                maxLength=6
+                                ).aio_captcha_handler(captcha_file=f"{file}")
     print(result)
+    if result.get("solution") is None:
+        return None, None
     cap_text: str = result.get("solution").get('text')
 
     if len(cap_text) != 6 \
@@ -105,12 +107,12 @@ correct = 0
 
 async def main():
     global total, correct
-    for i in range(10):
+    for i in range(100):
         total += 1
         result = await mpets.get_captcha()
         image_path = result["captcha"]
-        code = await recognize_captcha(image_path) # С помощью нейронки
-        # code, task_id = await rucaptcha(image_path)
+        # code = await recognize_captcha(image_path) # С помощью нейронки
+        code, task_id = await rucaptcha(image_path)
         if code is None:
             os.remove(image_path)
             continue
@@ -119,7 +121,7 @@ async def main():
 
         if captcha_result:
             correct += 1
-            with open(f"./new/{code}.png", 'wb') as f:
+            with open(f"../new/{code}.png", 'wb') as f:
                 temp = open(f"{image_path}", 'rb')
                 f.write(temp.read())
         elif captcha_result is False:
@@ -137,6 +139,7 @@ async def start():
         tasks.append(asyncio.create_task(main()))
 
     await asyncio.gather(*tasks)
+
 
 if __name__ == "__main__":
     asyncio.run(start())
